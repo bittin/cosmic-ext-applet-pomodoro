@@ -1,0 +1,15 @@
+app-title = Pomodoro Timer
+idle = Idle
+work = Work
+short-break = Short Break
+long-break = Long Break
+start = Start
+pause = Pause
+resume = Resume
+reset = Reset
+skip = Skip
+pomodoros = { $completed } / { $goal }
+work-mins = Work (min)
+short-break-mins = Short break (min)
+long-break-mins = Long break (min)
+long-break-interval = Pomodoros until long break

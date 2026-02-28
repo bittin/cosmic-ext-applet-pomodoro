@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=Pomodoro Timer
+Comment=A pomodoro timer applet for the COSMIC desktop
+Type=Application
+Icon=com.github.bgub.CosmicExtAppletPomodoro
+Exec=cosmic-ext-applet-pomodoro %F
+Terminal=false
+StartupNotify=true
+Categories=COSMIC
+Keywords=COSMIC;pomodoro;timer
+NoDisplay=true
+X-CosmicApplet=true
+X-CosmicHoverPopup=Auto
+MimeType=
