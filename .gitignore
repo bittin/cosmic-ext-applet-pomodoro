@@ -5,6 +5,7 @@
 *.pdb
 **/*.rs.bk
 debug/
+result
 target/
 vendor/
 vendor.tar
