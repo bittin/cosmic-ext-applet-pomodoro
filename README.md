@@ -2,6 +2,8 @@
 
 A pomodoro timer applet for the COSMIC™ desktop. Sits in the panel and provides work/break interval tracking with configurable durations.
 
+![Screenshot](screenshot.png)
+
 ## Installation
 
 A [justfile](./justfile) is included by default for the [casey/just][just] command runner.
