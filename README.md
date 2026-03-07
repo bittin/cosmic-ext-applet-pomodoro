@@ -21,7 +21,7 @@ Then add the applet to a panel in **Settings > Desktop > Panel**.
 
 ### NixOS
 
-A [nixpkgs package](https://github.com/NixOS/nixpkgs/pull/495307) is in review.
+NixOS users should use the [Flatpak package](https://github.com/pop-os/cosmic-flatpak/pull/116) for now.
 
 ### Flatpak
 
