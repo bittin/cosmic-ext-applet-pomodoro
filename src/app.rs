@@ -304,14 +304,15 @@ impl cosmic::Application for AppModel {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        let time_str = self.format_time();
+        let (_, panel_h) = self.core.applet.suggested_window_size();
+        #[allow(clippy::cast_precision_loss)]
+        let diameter = panel_h.get() as f32;
+        let radius = diameter / 2.0;
 
         let icon_bytes = if self.paused { PAUSE_SVG } else { TOMATO_SVG };
         let icon = widget::icon(widget::icon::from_svg_bytes(icon_bytes).symbolic(true))
             .width(Length::Fixed(18.0))
             .height(Length::Fixed(18.0));
-
-        let label = widget::text(time_str).size(14.0);
 
         let active = self.phase != Phase::Idle;
         let bg_color = if active {
@@ -320,22 +321,35 @@ impl cosmic::Application for AppModel {
             cosmic::iced::Color::TRANSPARENT
         };
 
-        let content = widget::container(
-            widget::row()
-                .push(icon)
-                .push(label)
-                .spacing(8)
-                .align_y(Alignment::Center),
-        )
-        .padding([4, 8])
-        .style(move |theme: &Theme| container::Style {
-            background: Some(bg_color.into()),
-            border: cosmic::iced::Border {
-                radius: theme.cosmic().corner_radii.radius_xl.into(),
-                ..Default::default()
-            },
-            ..container::Style::default()
-        });
+        let mut row = widget::row().push(icon).align_y(Alignment::Center);
+        if active {
+            row = row
+                .push(widget::text(self.format_time()).size(14.0))
+                .spacing(4);
+        }
+
+        let content = widget::container(row)
+            .height(Length::Fixed(diameter))
+            .width(if active {
+                Length::Shrink
+            } else {
+                Length::Fixed(diameter)
+            })
+            .align_x(Alignment::Center)
+            .align_y(Alignment::Center)
+            .padding(if active {
+                [0.0, radius / 2.0]
+            } else {
+                [0.0, 0.0]
+            })
+            .style(move |_theme: &Theme| container::Style {
+                background: Some(bg_color.into()),
+                border: cosmic::iced::Border {
+                    radius: radius.into(),
+                    ..Default::default()
+                },
+                ..container::Style::default()
+            });
 
         let btn = widget::button::custom(self.core.applet.autosize_window(content))
             .on_press(Message::ToggleTimer)
