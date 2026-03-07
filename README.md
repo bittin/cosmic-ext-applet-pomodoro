@@ -10,7 +10,7 @@ A pomodoro timer applet for the COSMIC™ desktop. Sits in the panel and provide
 
 ### Build from source
 
-Requires a [Rust toolchain][rustup], [just][just], and the standard COSMIC build dependencies (`pkg-config`, plus dev libraries for dbus, wayland, xkbcommon, etc. — the same packages needed to build any COSMIC applet).
+Requires a [Rust toolchain][rustup], [just][just], and the standard COSMIC™ build dependencies (`pkg-config`, plus dev libraries for dbus, wayland, xkbcommon, etc. — the same packages needed to build any COSMIC™ applet).
 
 ```sh
 just install        # system-wide (/usr), needs sudo
