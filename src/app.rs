@@ -4,13 +4,13 @@ use std::time::Duration;
 
 use crate::config::Config;
 use crate::fl;
+use cosmic::Theme;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
-use cosmic::iced::{window::Id, Alignment, Length, Limits, Subscription};
+use cosmic::iced::futures::SinkExt;
+use cosmic::iced::{Alignment, Length, Limits, Subscription, window::Id};
 use cosmic::iced_winit::commands::popup::{destroy_popup, get_popup};
 use cosmic::prelude::*;
 use cosmic::widget::{self, container};
-use cosmic::iced::futures::SinkExt;
-use cosmic::Theme;
 
 const TOMATO_SVG: &[u8] = include_bytes!("../resources/tomato.svg");
 const PAUSE_SVG: &[u8] = include_bytes!("../resources/pause.svg");
@@ -22,6 +22,16 @@ pub enum Phase {
     Work,
     ShortBreak,
     LongBreak,
+}
+
+impl Phase {
+    fn total_secs(self, config: &Config) -> u32 {
+        match self {
+            Self::Idle | Self::Work => config.work_mins * 60,
+            Self::ShortBreak => config.short_break_mins * 60,
+            Self::LongBreak => config.long_break_mins * 60,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -55,23 +65,82 @@ pub enum Message {
 }
 
 impl AppModel {
+    fn start_phase(&mut self, phase: Phase) {
+        self.phase = phase;
+        self.remaining_secs = match phase {
+            Phase::Idle => 0,
+            _ => phase.total_secs(&self.config),
+        };
+        self.paused = false;
+    }
+
+    fn start_timer(&mut self) {
+        self.start_phase(Phase::Work);
+        self.completed_pomodoros = 0;
+    }
+
+    fn reset_timer(&mut self) {
+        self.start_phase(Phase::Idle);
+        self.completed_pomodoros = 0;
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn progress(&self) -> f32 {
+        let total_secs = self.phase.total_secs(&self.config);
+        if total_secs > 0 && self.phase != Phase::Idle {
+            1.0 - (self.remaining_secs as f32 / total_secs as f32)
+        } else {
+            0.0
+        }
+    }
+
+    fn completed_in_cycle(&self, goal: u32) -> u32 {
+        match self.phase {
+            Phase::Work => (self.completed_pomodoros % goal) + 1,
+            Phase::LongBreak => goal,
+            _ => self.completed_pomodoros % goal,
+        }
+    }
+
+    fn update_config_value(&mut self, value: u32, update: impl FnOnce(&mut Config, u32)) {
+        update(&mut self.config, value);
+        self.save_config();
+    }
+
+    fn controls(&self) -> Element<'_, Message> {
+        let controls = match (self.phase, self.paused) {
+            (Phase::Idle, _) => {
+                widget::row().push(widget::button::suggested(fl!("start")).on_press(Message::Start))
+            }
+            (_, true) => widget::row()
+                .push(widget::button::suggested(fl!("resume")).on_press(Message::Resume))
+                .push(widget::button::destructive(fl!("reset")).on_press(Message::Reset)),
+            (_, false) => widget::row()
+                .push(widget::button::standard(fl!("pause")).on_press(Message::Pause))
+                .push(widget::button::standard(fl!("skip")).on_press(Message::Skip))
+                .push(widget::button::destructive(fl!("reset")).on_press(Message::Reset)),
+        };
+
+        controls.spacing(8).into()
+    }
+
     fn advance_phase(&mut self) {
         match self.phase {
             Phase::Work => {
                 self.completed_pomodoros += 1;
-                if self.config.long_break_interval > 0
-                    && self.completed_pomodoros.is_multiple_of(self.config.long_break_interval)
+                let next_phase = if self.config.long_break_interval > 0
+                    && self
+                        .completed_pomodoros
+                        .is_multiple_of(self.config.long_break_interval)
                 {
-                    self.phase = Phase::LongBreak;
-                    self.remaining_secs = self.config.long_break_mins * 60;
+                    Phase::LongBreak
                 } else {
-                    self.phase = Phase::ShortBreak;
-                    self.remaining_secs = self.config.short_break_mins * 60;
-                }
+                    Phase::ShortBreak
+                };
+                self.start_phase(next_phase);
             }
             Phase::ShortBreak | Phase::LongBreak => {
-                self.phase = Phase::Work;
-                self.remaining_secs = self.config.work_mins * 60;
+                self.start_phase(Phase::Work);
             }
             Phase::Idle => {}
         }
@@ -79,7 +148,7 @@ impl AppModel {
 
     fn display_secs(&self) -> u32 {
         if self.phase == Phase::Idle {
-            self.config.work_mins * 60
+            Phase::Work.total_secs(&self.config)
         } else {
             self.remaining_secs
         }
@@ -155,10 +224,7 @@ impl AppModel {
     }
 }
 
-fn colored_bg(
-    color: cosmic::iced::Color,
-    radius: f32,
-) -> impl Fn(&Theme) -> container::Style {
+fn colored_bg(color: cosmic::iced::Color, radius: f32) -> impl Fn(&Theme) -> container::Style {
     move |_theme: &Theme| container::Style {
         background: Some(color.into()),
         border: cosmic::iced::Border {
@@ -191,7 +257,6 @@ fn setting_row<'a>(
         .spacing(8)
         .into()
 }
-
 
 impl cosmic::Application for AppModel {
     type Executor = cosmic::executor::Default;
@@ -291,18 +356,7 @@ impl cosmic::Application for AppModel {
 
         let timer_text = self.format_time_full();
 
-        // Progress bar
-        let total_secs = match self.phase {
-            Phase::Idle | Phase::Work => self.config.work_mins * 60,
-            Phase::ShortBreak => self.config.short_break_mins * 60,
-            Phase::LongBreak => self.config.long_break_mins * 60,
-        };
-        #[allow(clippy::cast_precision_loss)]
-        let progress = if total_secs > 0 && self.phase != Phase::Idle {
-            1.0 - (self.remaining_secs as f32 / total_secs as f32)
-        } else {
-            0.0
-        };
+        let progress = self.progress();
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let bar_width = (280.0 * progress) as u16;
 
@@ -322,11 +376,7 @@ impl cosmic::Application for AppModel {
         // Pomodoro dots — filled for completed, empty for remaining
         let mut dots = widget::row().spacing(6);
         let goal = self.config.long_break_interval.max(1);
-        let completed_in_cycle = match self.phase {
-            Phase::Work => (self.completed_pomodoros % goal) + 1,
-            Phase::LongBreak => goal,
-            _ => self.completed_pomodoros % goal,
-        };
+        let completed_in_cycle = self.completed_in_cycle(goal);
         for i in 0..goal {
             let dot_color = if i < completed_in_cycle {
                 self.phase_color()
@@ -354,31 +404,11 @@ impl cosmic::Application for AppModel {
         .align_x(Alignment::Center)
         .style(colored_bg(self.phase_color_muted(), 12.0));
 
-        // Controls
-        let mut controls = widget::row().spacing(8);
-        match (self.phase, self.paused) {
-            (Phase::Idle, _) => {
-                controls = controls
-                    .push(widget::button::suggested(fl!("start")).on_press(Message::Start));
-            }
-            (_, true) => {
-                controls = controls
-                    .push(widget::button::suggested(fl!("resume")).on_press(Message::Resume))
-                    .push(widget::button::destructive(fl!("reset")).on_press(Message::Reset));
-            }
-            (_, false) => {
-                controls = controls
-                    .push(widget::button::standard(fl!("pause")).on_press(Message::Pause))
-                    .push(widget::button::standard(fl!("skip")).on_press(Message::Skip))
-                    .push(widget::button::destructive(fl!("reset")).on_press(Message::Reset));
-            }
-        }
-
         let content = widget::column()
             .push(timer_block)
             .push(progress_bar)
             .push(dots)
-            .push(controls)
+            .push(self.controls())
             .push(widget::divider::horizontal::default())
             .push(self.settings_section())
             .spacing(12)
@@ -389,10 +419,11 @@ impl cosmic::Application for AppModel {
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        let mut subs = vec![self
-            .core()
-            .watch_config::<Config>(Self::APP_ID)
-            .map(|update| Message::UpdateConfig(update.config))];
+        let mut subs = vec![
+            self.core()
+                .watch_config::<Config>(Self::APP_ID)
+                .map(|update| Message::UpdateConfig(update.config)),
+        ];
 
         if self.phase != Phase::Idle && !self.paused {
             struct TimerTick;
@@ -415,21 +446,11 @@ impl cosmic::Application for AppModel {
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         match message {
             Message::ToggleTimer => match (self.phase, self.paused) {
-                (Phase::Idle, _) => {
-                    self.phase = Phase::Work;
-                    self.remaining_secs = self.config.work_mins * 60;
-                    self.paused = false;
-                    self.completed_pomodoros = 0;
-                }
+                (Phase::Idle, _) => self.start_timer(),
                 (_, false) => {
                     self.paused = true;
                 }
-                (_, true) => {
-                    self.phase = Phase::Idle;
-                    self.remaining_secs = 0;
-                    self.paused = false;
-                    self.completed_pomodoros = 0;
-                }
+                (_, true) => self.reset_timer(),
             },
             Message::Tick => {
                 if self.remaining_secs > 0 {
@@ -438,43 +459,29 @@ impl cosmic::Application for AppModel {
                     self.advance_phase();
                 }
             }
-            Message::Start => {
-                self.phase = Phase::Work;
-                self.remaining_secs = self.config.work_mins * 60;
-                self.paused = false;
-                self.completed_pomodoros = 0;
-            }
+            Message::Start => self.start_timer(),
             Message::Pause => {
                 self.paused = true;
             }
             Message::Resume => {
                 self.paused = false;
             }
-            Message::Reset => {
-                self.phase = Phase::Idle;
-                self.remaining_secs = 0;
-                self.paused = false;
-                self.completed_pomodoros = 0;
-            }
+            Message::Reset => self.reset_timer(),
             Message::Skip => {
                 self.advance_phase();
             }
-            Message::SetWorkMins(val) => {
-                self.config.work_mins = val;
-                self.save_config();
-            }
-            Message::SetShortBreakMins(val) => {
-                self.config.short_break_mins = val;
-                self.save_config();
-            }
-            Message::SetLongBreakMins(val) => {
-                self.config.long_break_mins = val;
-                self.save_config();
-            }
-            Message::SetLongBreakInterval(val) => {
-                self.config.long_break_interval = val;
-                self.save_config();
-            }
+            Message::SetWorkMins(val) => self.update_config_value(val, |config, value| {
+                config.work_mins = value;
+            }),
+            Message::SetShortBreakMins(val) => self.update_config_value(val, |config, value| {
+                config.short_break_mins = value;
+            }),
+            Message::SetLongBreakMins(val) => self.update_config_value(val, |config, value| {
+                config.long_break_mins = value;
+            }),
+            Message::SetLongBreakInterval(val) => self.update_config_value(val, |config, value| {
+                config.long_break_interval = value;
+            }),
             Message::UpdateConfig(config) => {
                 self.config = config;
             }
