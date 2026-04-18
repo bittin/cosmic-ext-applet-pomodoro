@@ -25,10 +25,8 @@
     <p xml:lang="cs">Applet časovače Pomodoro pro prostředí COSMIC. Zůstaňte soustředění
       pomocí techniky Pomodoro s přizpůsobitelnými intervaly práce a přestávek
       přímo z vašeho panelu.</p>
-  </description>
-  <description xml:lang="uk">
-    <p>Віджет таймер Помідор для COSMIC. Залишайтеся зосередженими завдяки 
-      методу Помідоро (Pomodoro) з можливістю налаштовувати інтервали роботи 
+    <p xml:lang="uk">Віджет таймер Помідор для COSMIC. Залишайтеся зосередженими завдяки
+      методу Помідоро (Pomodoro) з можливістю налаштовувати інтервали роботи
       та перерв прямо з вашої панелі.</p>
   </description>
 
